@@ -37,14 +37,12 @@ functions:
     events:
       - http: ANY /
       - http: 'ANY {proxy+}'
-  getGQLCache:
+  cacheQuery:
     handler: index.handler
     events:
-      - http: 'GET /gqlcache'
-  createGQLCache:
-    handler: index.handler
-    events:
-      - http: 'POST /gqlcache'
+      - http: 'POST /cache-graphql'
+
+  
 
 resources:
   Resources:

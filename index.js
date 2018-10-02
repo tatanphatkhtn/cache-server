@@ -4,7 +4,7 @@ const bodyParser = require('body-parser');
 const express = require('express')
 const app = express()
 const AWS = require('aws-sdk');
-
+const axios = require('axios')
 const CACHE_TABLE = process.env.CACHE_TABLE;
 
 const IS_OFFLINE = process.env.IS_OFFLINE;
@@ -14,7 +14,7 @@ if (IS_OFFLINE === 'true') {
         region: 'localhost',
         endpoint: 'http://localhost:8000'
     })
-    console.log(dynamoDb);
+    // console.log(dynamoDb);
 } else {
     dynamoDb = new AWS.DynamoDB.DocumentClient();
 };
@@ -26,7 +26,9 @@ app.get('/', function (req, res) {
 })
 
 
-app.post('/cache-graphql', async (req, res) => {
+app.post('/cache-graphql',  (req, res) => {
+
+    console.log('Body: ', req.body)
     const key = JSON.stringify(req.body);
     let status = 400;
     let data = {};
@@ -37,14 +39,15 @@ app.post('/cache-graphql', async (req, res) => {
         TableName: CACHE_TABLE
     }
 
-    dynamoDb.scan(params, async (error, result) => {
+    dynamoDb.scan(params,  (error, result) => {
+        console.log('Scan result: ', result)
         if (error) {
             console.log(error);
-            res.status(400).json({ error: 'Could not get allcache' });
+            return res.status(400).json({ error: 'Could not get allcache' });
         }
         if (result.Items) {
             const cache = result.Items.reduce((acc, cur) => {
-                acc[cur.query]
+                return acc[cur.key] = cur.result
             }, {})
             console.log('Cache: ', cache)
             if (cache[key]) {
@@ -64,7 +67,7 @@ app.post('/cache-graphql', async (req, res) => {
                         dynamoDb.get(params, (error, data) => {
                             if (error) {
                                 // console.log(error);
-                                res.status(400).json({ error: 'Could not create cache' });
+                                return res.status(400).json({ error: 'Could not create cache' });
                             }
                             res.json({ key, result: data });
                         });
@@ -90,17 +93,9 @@ app.post('/cache-graphql', async (req, res) => {
                         };
 
                         dynamoDb.put(params, (error) => {
-                            if (error) {
-                                console.log(error);
-                                res.status(400).json({ error: 'Could not create cache' });
-                            }
-                            res.json({ key, result: 'pending' });
+                            console.log('Write new cache')
                         });
                     })
-
-                    // console.log("response");
-                    //console.log("xxx1004", response.data)
-
                     const params = {
                         TableName: CACHE_TABLE,
                         Item: {
@@ -112,9 +107,8 @@ app.post('/cache-graphql', async (req, res) => {
                     dynamoDb.put(params, (error) => {
                         if (error) {
                             console.log(error);
-                            res.status(400).json({ error: 'Could not create cache' });
+                            return res.status(400).json({ error: 'Could not create cache' });
                         }
-                        res.json({ key, result: 'pending' });
                     });
 
                     // cache[key] = response;
@@ -123,7 +117,7 @@ app.post('/cache-graphql', async (req, res) => {
                     // console.log("xxx1003", status)
                 }
                 catch (e) {
-                    console.log("xxx3001 maybe an exception ", e.response);
+                    console.log("xxx3001 maybe an exception ", e);
                     if (e.response) {
                         data = e.response.data;
                         status = e.response.status;
@@ -131,7 +125,7 @@ app.post('/cache-graphql', async (req, res) => {
                 }
             }
             console.log("xxx4001", status, JSON.stringify(data).length)
-            res.status(status).send(data);
+            return res.status(status).send({key, result: "pending"});
         } else {
             res.status(404).json({ error: "cache not found" });
         }
