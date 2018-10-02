@@ -19,7 +19,7 @@ if (IS_OFFLINE === 'true') {
     dynamoDb = new AWS.DynamoDB.DocumentClient();
 };
 
-app.use(bodyParser.json({ strict: false }));
+app.use(bodyParser.json());
 
 app.get('/', function (req, res) {
     res.send('Hello Codelynx team!!!')
@@ -47,7 +47,10 @@ app.post('/cache-graphql',  (req, res) => {
         }
         if (result.Items) {
             const cache = result.Items.reduce((acc, cur) => {
-                return acc[cur.key] = cur.result
+                console.log('acc',acc)
+                console.log('cur',cur)
+                acc[cur.key] = cur.result
+                return acc
             }, {})
             console.log('Cache: ', cache)
             if (cache[key]) {
@@ -56,45 +59,45 @@ app.post('/cache-graphql',  (req, res) => {
                 
                 //TODO: subscibe to dynamoDB changes or retry promise
                 if(data === 'pending') {
-                    setTimeout(1000, () => {
+                    console.log('retry request')
+                    setTimeout(() => {
                         const params = {
                             TableName: CACHE_TABLE,
                             Key: {
                                 key
                             },
                         };
-
                         dynamoDb.get(params, (error, data) => {
                             if (error) {
-                                // console.log(error);
                                 return res.status(400).json({ error: 'Could not create cache' });
                             }
                             res.json({ key, result: data });
                         });
-                    })
+                    },1000)
                 }
 
-                // status = (await cache[key]).status;
             } else {
                 try {
                     console.log("xxx1001", "posting to master.take247.co.il/graphql");
                     console.log("xxx1002", req.body);
                     const response = axios.post('http://master.take247.co.il/graphql', req.body);
 
-                    response.then((data) => {
-                        console.log('Response data: ', data)
+                    response.then((res) => {
+                        console.log('Response data: ', res.data)
 
                         const params = {
                             TableName: CACHE_TABLE,
-                            Item: {
-                                key,
-                                result: JSON.stringify(data)
-                            },
+                            UpdateExpression: "set result = :data",
+                            ExpressionAttributeValues: {
+                                ':data': res.data
+                            }
                         };
 
-                        dynamoDb.put(params, (error) => {
+                        dynamoDb.update(params, (error) => {
                             console.log('Write new cache')
                         });
+                    }).catch((err) => {
+                        console.log('Query to galaxy failed: ', err)
                     })
                     const params = {
                         TableName: CACHE_TABLE,
