@@ -53,6 +53,7 @@ resources:
           -
             AttributeName: key
             AttributeType: S
+          
         KeySchema:
           -
             AttributeName: key

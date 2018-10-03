@@ -6,8 +6,9 @@ const app = express()
 const AWS = require('aws-sdk');
 const axios = require('axios')
 const CACHE_TABLE = process.env.CACHE_TABLE;
-
+const crypto = require('crypto');
 const IS_OFFLINE = process.env.IS_OFFLINE;
+const dynamoDBConverter = AWS.DynamoDB.Converter
 let dynamoDb;
 if (IS_OFFLINE === 'true') {
     dynamoDb = new AWS.DynamoDB.DocumentClient({
@@ -19,140 +20,122 @@ if (IS_OFFLINE === 'true') {
     dynamoDb = new AWS.DynamoDB.DocumentClient();
 };
 
+const GRAPH_API_URL = 'http://takearea.me:4000'
+const secret = 'shhhhhhh!secret';
+// const hash = crypto.createHmac('sha256', secret)
+//                    .update('I love cupcakes')
+//                    .digest('hex');
+
 app.use(bodyParser.json());
 
 app.get('/', function (req, res) {
     res.send('Hello Codelynx team!!!')
 })
 
+app.get('/cache-graphql', (req,res) => {
+    res.send('hi! use POST on this route instead of GET')
+})
 
 app.post('/cache-graphql',  (req, res) => {
 
     console.log('Body: ', req.body)
-    const key = JSON.stringify(req.body);
+    const queryBody = JSON.stringify(req.body)
+    const key = crypto.createHmac('sha256', secret).update(queryBody).digest('hex');
+
     let status = 400;
     let data = {};
 
     console.log('key: ', key)
 
     const params = {
-        TableName: CACHE_TABLE
+        TableName: CACHE_TABLE,
+        Key: {
+            key
+        }
     }
 
-    dynamoDb.scan(params,  (error, result) => {
-        console.log('Scan result: ', result)
+    dynamoDb.get(params,  (error, cache) => {
+        // return console.log('Scan result: ', result)
+        console.log(cache)
         if (error) {
             console.log(error);
-            return res.status(400).json({ error: 'Could not get allcache' });
+            return res.status(400).json({ error: 'Could not get cache' });
         }
-        if (result.Items) {
-            const cache = result.Items.reduce((acc, cur) => {
-                console.log('acc',acc)
-                console.log('cur',cur)
-                acc[cur.key] = cur.result
-                return acc
-            }, {})
-            console.log('Cache: ', cache)
-            if (cache[key]) {
-                console.log("xxx1006", "found in cache.")
-                data = cache[key]
-                
-                //TODO: subscibe to dynamoDB changes or retry promise
-                if(data === 'pending') {
-                    console.log('retry request')
-                    setTimeout(() => {
-                        const params = {
-                            TableName: CACHE_TABLE,
-                            Key: {
-                                key
-                            },
-                        };
-                        dynamoDb.get(params, (error, data) => {
-                            if (error) {
-                                return res.status(400).json({ error: 'Could not create cache' });
-                            }
-                            res.json({ key, result: data });
-                        });
-                    },1000)
-                }
+        if (cache.Item) {
+            console.log("xxx1006", "found in cache.")
+            const data = cache.Item.result
+            //TODO: subscibe to dynamoDB changes or retry promise
+            if(data !== 'pending') return res.json(data)
+            console.log('retry request after 1 second')
+            setTimeout(() => {
+                const params = {
+                    TableName: CACHE_TABLE,
+                    Key: {
+                        key
+                    },
+                };
+                dynamoDb.get(params, (error, data) => {
+                    // console.log('get: ',data)
+                    if (error) {
+                        return res.status(400).json({ error: 'Could not create cache' });
+                    }
+                    return res.json(data.Item.result);
+                });
+            }, 1000)
+        } else {
+            try {
+                console.log("xxx1001", `posting to ${GRAPH_API_URL}`);
+                // console.log("xxx1002", req.body);
+                const response = axios.post(GRAPH_API_URL, req.body);
 
-            } else {
-                try {
-                    console.log("xxx1001", "posting to master.take247.co.il/graphql");
-                    console.log("xxx1002", req.body);
-                    const response = axios.post('http://master.take247.co.il/graphql', req.body);
-
-                    response.then((res) => {
-                        console.log('Response data: ', res.data)
-
-                        const params = {
-                            TableName: CACHE_TABLE,
-                            UpdateExpression: "set result = :data",
-                            ExpressionAttributeValues: {
-                                ':data': res.data
-                            }
-                        };
-
-                        dynamoDb.update(params, (error) => {
-                            console.log('Write new cache')
-                        });
-                    }).catch((err) => {
-                        console.log('Query to galaxy failed: ', err)
-                    })
+                response.then((gqlRes) => {
+                    
+                    console.log('gqlRes', gqlRes.data)
                     const params = {
                         TableName: CACHE_TABLE,
-                        Item: {
-                            key,
-                            result: 'pending'
+                        Key :{
+                            key
                         },
+                        UpdateExpression: "set #r = :gqldata",
+                        ExpressionAttributeNames: {
+                            '#r': 'result'
+                        },
+                        ExpressionAttributeValues: {
+                            ':gqldata': dynamoDBConverter.input(gqlRes.data)
+                        }
                     };
 
-                    dynamoDb.put(params, (error) => {
-                        if (error) {
-                            console.log(error);
-                            return res.status(400).json({ error: 'Could not create cache' });
-                        }
+                    dynamoDb.update(params, (error) => {
+                        console.log('Write new cache',error)
                     });
-
-                    // cache[key] = response;
-                    // data = (await cache[key]).data;
-                    // status = (await cache[key]).status;
-                    // console.log("xxx1003", status)
-                }
-                catch (e) {
-                    console.log("xxx3001 maybe an exception ", e);
-                    if (e.response) {
-                        data = e.response.data;
-                        status = e.response.status;
+                    res.json(gqlRes.data)
+                }).catch((err) => {
+                    console.log('Query to galaxy failed: ', err)
+                })
+                const params = {
+                    TableName: CACHE_TABLE,
+                    Item: {
+                        key,
+                        // query: queryBody,
+                        result: 'pending'
+                    },
+                };
+                dynamoDb.put(params, (error) => {
+                    if (error) {
+                        console.log(error);
+                        return res.status(400).json({ error: 'Could not create cache' });
                     }
+                });
+            }
+            catch (e) { 
+                console.log("xxx3001 maybe an exception ", e);
+                if (e.response) {
+                    data = e.response.data;
+                    status = e.response.status;
                 }
             }
-            console.log("xxx4001", status, JSON.stringify(data).length)
-            return res.status(status).send({key, result: "pending"});
-        } else {
-            res.status(404).json({ error: "cache not found" });
         }
     });
-
-
- 
 })
-
-
-// app.get('/gqlcache', function (req, res) {
-
-// })
-
-
-// app.post('/gqlcache', function (req, res) {
-//     const { query, result } = req.body;
-
-//     if (typeof query !== 'string') {
-//         res.status(400).json({ error: '"query" must be a string', data: { query, result } });
-//     }
-
-
-
-// })
 
 module.exports.handler = serverless(app);
