@@ -5,8 +5,9 @@ const express = require('express');
 const app = express();
 const AWS = require('aws-sdk');
 const axios = require('axios');
+const crypto = require('crypto');
 const CACHE_TABLE = process.env.CACHE_TABLE;
-
+const dynamoDbConverter = AWS.DynamoDB.Converter;
 const IS_OFFLINE = process.env.IS_OFFLINE;
 let dynamoDb;
 if (IS_OFFLINE === 'true') {
@@ -27,7 +28,10 @@ app.get('/', function(req, res) {
 app.post('/cache-graphql', async (req, res) => {
   console.log('---------------CACHE START-----------------');
   console.log('body: ', req.body);
-  const key = JSON.stringify(req.body);
+  const key = crypto
+    .createHmac('sha256', '123')
+    .update(JSON.stringify(req.body))
+    .digest('hex');
   let status = 400;
   let data = {};
 
@@ -55,19 +59,23 @@ app.post('/cache-graphql', async (req, res) => {
       const item = result.Items[0];
       console.log('item');
       console.log(item);
-      return res.status(200).send({ data: item.value });
+      return res
+        .status(200)
+        .send({ data: dynamoDbConverter.unmarshall(item.value) });
     } else {
       console.log('--------Item not exists--------');
       //Item not exists
       //Proxy to API
-      const response = await axios.post(
-        'http://master.take247.co.il/graphql',
-        req.body
-      );
+      const response = await axios.post('http://takearea.me:4000', req.body);
       const { status, data } = response;
 
       console.log('---------Cache Update----------');
       //Update cache
+      //Convert JS object to Dynamo Attribute
+      const value = dynamoDbConverter.marshall(data);
+      console.log(value);
+      console.log('converter length', JSON.stringify(value).length);
+      console.log('data length', JSON.stringify(data).length);
       const params = {
         Key: {
           key: key
@@ -77,7 +85,7 @@ app.post('/cache-graphql', async (req, res) => {
           '#value': 'value'
         },
         ExpressionAttributeValues: {
-          ':value': data
+          ':value': value
         },
         TableName: CACHE_TABLE
       };
