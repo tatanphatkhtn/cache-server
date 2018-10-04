@@ -4,7 +4,6 @@ import bodyParser from 'body-parser';
 import express from 'express';
 import axios from 'axios';
 import Redis from 'ioredis';
-import cors from 'cors';
 
 const GRAPHQL_SERVER = {
   host: 'http://takearea.me',
@@ -17,7 +16,6 @@ const REDIS_SERVER = {
 const app = express();
 const redis = new Redis(REDIS_SERVER);
 
-app.use(cors());
 app.use(bodyParser.json());
 
 app.get('/', function(req, res) {

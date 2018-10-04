@@ -45,7 +45,10 @@ functions:
   cacheQuery:
     handler: index.handler
     events:
-      - http: 'POST /cache-graphql'
+      - http: 
+          path: cache-graphql
+          method: post
+          cors: true
 
   
 
