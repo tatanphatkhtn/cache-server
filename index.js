@@ -35,7 +35,19 @@ app.post('/cache-graphql', async (req, res) => {
     //Get Item based on key from redis
     const cacheItem = await redis.get(key);
     console.log('Cache Item: ', cacheItem);
+
+    if (key.indexOf('mutation') > -1) {
+      console.log('xxx2001', 'seems like a mutation, invalidate all cache.');
+      await redis.flushdb();
+      const response = await axios.post(
+        `${GRAPHQL_SERVER.host}:${GRAPHQL_SERVER.port}`,
+        req.body
+      );
+      return res.status(response.status).send(response.data);
+    }
+
     if (cacheItem) {
+      console.log('xxx2002', 'seems like a query');
       console.log('Cache Item exists');
       return res.status(200).send(JSON.parse(cacheItem));
     } else {
