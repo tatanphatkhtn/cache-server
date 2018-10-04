@@ -3,14 +3,19 @@
 service: my-express-application
 
 plugins:
-  - serverless-dynamodb-local
+  - serverless-webpack
   - serverless-offline #serverless-offline needs to be last in the list
 
 custom:
   tableName: 'cache-table-${self:provider.stage}'
+  webpack:
+    webpackConfig: 'webpack.config.js'
+    includeModules: false
+    packager: 'npm'
   dynamodb:
     start:
       migrate: true
+  
 
 provider:
   name: aws

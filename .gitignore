@@ -62,3 +62,6 @@ typings/
 
 # database
 .dynamodb
+
+# build
+build
