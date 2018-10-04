@@ -1,23 +1,20 @@
 //index.js
-const serverless = require('serverless-http');
-const bodyParser = require('body-parser');
-const express = require('express');
+import serverless from 'serverless-http';
+import bodyParser from 'body-parser';
+import express from 'express';
+import axios from 'axios';
+import Redis from 'ioredis';
+
+const GRAPHQL_SERVER = {
+  host: 'http://takearea.me',
+  port: 4000
+};
+const REDIS_SERVER = {
+  host: '54.169.168.13',
+  port: 6379
+};
 const app = express();
-const AWS = require('aws-sdk');
-const axios = require('axios');
-const crypto = require('crypto');
-const CACHE_TABLE = process.env.CACHE_TABLE;
-const dynamoDbConverter = AWS.DynamoDB.Converter;
-const IS_OFFLINE = process.env.IS_OFFLINE;
-let dynamoDb;
-if (IS_OFFLINE === 'true') {
-  dynamoDb = new AWS.DynamoDB.DocumentClient({
-    region: 'localhost',
-    endpoint: 'http://localhost:8000'
-  });
-} else {
-  dynamoDb = new AWS.DynamoDB.DocumentClient();
-}
+const redis = new Redis(REDIS_SERVER);
 
 app.use(bodyParser.json());
 
@@ -27,70 +24,31 @@ app.get('/', function(req, res) {
 
 app.post('/cache-graphql', async (req, res) => {
   console.log('---------------CACHE START-----------------');
-  console.log('body: ', req.body);
-  const key = crypto
-    .createHmac('sha256', '123')
-    .update(JSON.stringify(req.body))
-    .digest('hex');
+  console.log(`GRAPHQL_SERVER: ${GRAPHQL_SERVER}`);
+  console.log(`REDIS_SERVER: ${REDIS_SERVER}`);
   let status = 400;
   let data = {};
-
+  const key = JSON.stringify(req.body);
   console.log('key: ', key);
 
   try {
-    //Get Item based on key
-    const params = {
-      KeyConditions: {
-        key: {
-          ComparisonOperator: 'EQ',
-          AttributeValueList: [key]
-        }
-      },
-      TableName: CACHE_TABLE
-    };
-    let result = null;
-    result = await dynamoDb.query(params).promise();
-    console.log('Get item successfully');
-    console.log(result);
-
-    if (result.Items.length > 0) {
-      //Item exists
-      console.log('--------Item exists---------');
-      const item = result.Items[0];
-      console.log('item');
-      console.log(item);
-      return res
-        .status(200)
-        .send({ data: dynamoDbConverter.unmarshall(item.value) });
+    //Get Item based on key from redis
+    const cacheItem = await redis.get(key);
+    console.log('Cache Item: ', cacheItem);
+    if (cacheItem) {
+      console.log('Cache Item exists');
+      return res.status(200).send(JSON.parse(cacheItem));
     } else {
-      console.log('--------Item not exists--------');
-      //Item not exists
-      //Proxy to API
-      const response = await axios.post('http://takearea.me:4000', req.body);
-      const { status, data } = response;
-
-      console.log('---------Cache Update----------');
-      //Update cache
-      //Convert JS object to Dynamo Attribute
-      const value = dynamoDbConverter.marshall(data);
-      console.log(value);
-      console.log('converter length', JSON.stringify(value).length);
-      console.log('data length', JSON.stringify(data).length);
-      const params = {
-        Key: {
-          key: key
-        },
-        UpdateExpression: 'set #value = :value',
-        ExpressionAttributeNames: {
-          '#value': 'value'
-        },
-        ExpressionAttributeValues: {
-          ':value': value
-        },
-        TableName: CACHE_TABLE
-      };
-      dynamoDb.update(params).promise();
-      return res.status(status).send(data);
+      console.log('Cache Item not exists');
+      console.log('Forwarding request to GraphQL Server');
+      const response = await axios.post(
+        `${GRAPHQL_SERVER.host}:${GRAPHQL_SERVER.port}`,
+        req.body
+      );
+      const { data } = response;
+      console.log(data);
+      redis.set(key, JSON.stringify(data));
+      return res.status(200).send(data);
     }
   } catch (error) {
     status = 400;
@@ -98,119 +56,6 @@ app.post('/cache-graphql', async (req, res) => {
     console.error(error);
     return res.status(status).send({ errors: [{ message: error }] });
   }
-
-  /* dynamoDb.scan(params, (error, result) => {
-    console.log("Scan result: ", result);
-    if (error) {
-      console.log(error);
-      return res.status(400).json({ error: "Could not get allcache" });
-    }
-    if (result.Items) {
-      const cache = result.Items.reduce((acc, cur) => {
-        console.log("acc", acc);
-        console.log("cur", cur);
-        acc[cur.key] = cur.result;
-        return acc;
-      }, {});
-      console.log("Cache: ", cache);
-      if (cache[key]) {
-        console.log("xxx1006", "found in cache.");
-        data = cache[key];
-
-        //TODO: subscibe to dynamoDB changes or retry promise
-        if (data === "pending") {
-          console.log("retry request");
-          setTimeout(() => {
-            const params = {
-              TableName: CACHE_TABLE,
-              Key: {
-                key
-              }
-            };
-            dynamoDb.get(params, (error, data) => {
-              if (error) {
-                return res
-                  .status(400)
-                  .json({ error: "Could not create cache" });
-              }
-              res.json({ key, result: data });
-            });
-          }, 1000);
-        }
-      } else {
-        try {
-          console.log("xxx1001", "posting to master.take247.co.il/graphql");
-          console.log("xxx1002", req.body);
-          const response = axios.post(
-            "http://master.take247.co.il/graphql",
-            req.body
-          );
-
-          response
-            .then(res => {
-              console.log("Response data: ", res.data);
-
-              const params = {
-                TableName: CACHE_TABLE,
-                UpdateExpression: "set result = :data",
-                ExpressionAttributeValues: {
-                  ":data": res.data
-                }
-              };
-
-              dynamoDb.update(params, error => {
-                console.log("Write new cache");
-              });
-            })
-            .catch(err => {
-              console.log("Query to galaxy failed: ", err);
-            });
-          const params = {
-            TableName: CACHE_TABLE,
-            Item: {
-              key,
-              result: "pending"
-            }
-          };
-
-          dynamoDb.put(params, error => {
-            if (error) {
-              console.log(error);
-              return res.status(400).json({ error: "Could not create cache" });
-            }
-          });
-
-          // cache[key] = response;
-          // data = (await cache[key]).data;
-          // status = (await cache[key]).status;
-          // console.log("xxx1003", status)
-        } catch (e) {
-          console.log("xxx3001 maybe an exception ", e);
-          if (e.response) {
-            data = e.response.data;
-            status = e.response.status;
-          }
-        }
-      }
-      console.log("xxx4001", status, JSON.stringify(data).length);
-      return res.status(status).send({ key, result: "pending" });
-    } else {
-      res.status(404).json({ error: "cache not found" });
-    }
-  }); */
 });
 
-// app.get('/gqlcache', function (req, res) {
-
-// })
-
-// app.post('/gqlcache', function (req, res) {
-//     const { query, result } = req.body;
-
-//     if (typeof query !== 'string') {
-//         res.status(400).json({ error: '"query" must be a string', data: { query, result } });
-//     }
-
-// })
-
-module.exports.handler = serverless(app);
+exports.handler = serverless(app);
