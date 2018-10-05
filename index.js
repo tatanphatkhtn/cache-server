@@ -5,11 +5,8 @@ const express = require('express')
 const app = express()
 const AWS = require('aws-sdk');
 const axios = require('axios')
-const CACHE_TABLE = process.env.CACHE_TABLE;
 const crypto = require('crypto');
-const IS_OFFLINE = process.env.IS_OFFLINE;
-const dynamoDBConverter = AWS.DynamoDB.Converter
-let dynamoDb;
+const cors = require('cors');
 
 var Redis = require('ioredis');
 var redis = new Redis({
@@ -17,22 +14,27 @@ var redis = new Redis({
     host: '54.169.168.13',
     family: 4,
 });
-
 const GRAPH_API_URL = 'http://takearea.me:4000'
 const secret = 'shhhhhhh!secret';
 
 app.use(bodyParser.json());
-
+app.use(cors())
 app.get('/', function (req, res) {
     res.send('Hello Codelynx team!!!')
 })
 
+app.get('/version', (req,res) => {
+    res.send('0.3')
+})
 app.get('/cache-graphql', (req,res) => {
     res.send('hi! use POST on this route instead of GET')
 })
 
 app.post('/cache-graphql', async (req, res) => {
-
+    if(req.method === 'OPTIONS') {
+        console.log('CORS option request accepted')
+        return res.status(200).send('OK')
+    }
     console.log('Body: ', req.body)
     const queryBody = JSON.stringify(req.body)
     const key = crypto.createHmac('sha256', secret).update(queryBody).digest('hex');
@@ -43,10 +45,10 @@ app.post('/cache-graphql', async (req, res) => {
     console.log('key: ', key)
 
     const cacheRecord = await redis.hgetall(key)
-    console.log('Cache record: ', cacheRecord)
+    // console.log('Cache record: ', cacheRecord)
     if (cacheRecord && Object.keys(cacheRecord).length > 0) {
         const queryResult = cacheRecord.result
-        console.log("xxx1006", "HIT cache.")
+        console.log("HIT cache.")
         if(queryResult !== 'pending') return res.json(queryResult)
         console.log('retry request after 1 second')
         
@@ -75,6 +77,8 @@ app.post('/cache-graphql', async (req, res) => {
                 }).catch(err => {
                     console.log(`Update pending key ${key} error: `, err)
                 })
+            }).catch(err => {
+                console.log(`Failed to post to ${GRAPH_API_URL}`,err)
             })
             // res.json()
         }

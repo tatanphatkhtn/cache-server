@@ -3,62 +3,31 @@
 service: my-express-application
 
 plugins:
-  - serverless-dynamodb-local
   - serverless-offline #serverless-offline needs to be last in the list
-
-custom:
-  tableName: 'cache-table-${self:provider.stage}'
-  dynamodb:
-    start:
-      migrate: true
 
 provider:
   name: aws
   runtime: nodejs8.10
   stage: dev
   region: us-east-1
-  iamRoleStatements:
-    - Effect: Allow
-      Action:
-        - dynamodb:Query
-        - dynamodb:Scan
-        - dynamodb:GetItem
-        - dynamodb:PutItem
-        - dynamodb:UpdateItem
-        - dynamodb:DeleteItem
-      Resource:
-        - { "Fn::GetAtt": ["CacheDynamoDBTable", "Arn" ] }
-  environment:
-    CACHE_TABLE: ${self:custom.tableName}
 
 functions:
-  app:
+  hello: 
     handler: index.handler
     events:
-      - http: ANY /
-      - http: 'ANY {proxy+}'
+      - http:
+          path: /cache-graphql
+          method: get
+  version: 
+    handler: index.handler
+    events:
+      - http:
+          path: /version
+          method: get
   cacheQuery:
     handler: index.handler
     events:
-      - http: 'POST /cache-graphql'
-
-  
-
-resources:
-  Resources:
-    CacheDynamoDBTable:
-      Type: 'AWS::DynamoDB::Table'
-      Properties:
-        AttributeDefinitions:
-          -
-            AttributeName: key
-            AttributeType: S
-          
-        KeySchema:
-          -
-            AttributeName: key
-            KeyType: HASH
-        ProvisionedThroughput:
-          ReadCapacityUnits: 1
-          WriteCapacityUnits: 1
-        TableName: ${self:custom.tableName}
+      - http: 
+          path: /cache-graphql
+          method: post
+          cors: true
