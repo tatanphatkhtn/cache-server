@@ -71,7 +71,7 @@ app.post('/cache-graphql', async (req, res) => {
             })
             const response = axios.post(GRAPH_API_URL, req.body);
             response.then((gqlRes) => {
-                res.json(JSON.stringify(gqlRes.data))
+                res.json(gqlRes.data)
                 redis.hset(key, 'result', JSON.stringify(gqlRes.data)).then(() => {
                     console.log('Update pending cache: ' + key)
                 }).catch(err => {
