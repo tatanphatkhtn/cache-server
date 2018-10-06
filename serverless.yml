@@ -1,6 +1,6 @@
 #serverless.yml
 
-service: my-express-application
+service: cache-server
 
 plugins:
   - serverless-webpack
@@ -10,7 +10,9 @@ custom:
   tableName: 'cache-table-${self:provider.stage}'
   webpack:
     webpackConfig: 'webpack.config.js'
-    includeModules: false
+    includeModules:
+      forceExclude:
+        - aws-sdk
     packager: 'npm'
   dynamodb:
     start:
@@ -21,7 +23,10 @@ provider:
   name: aws
   runtime: nodejs8.10
   stage: dev
-  region: us-east-1
+  region: ap-southeast-1
+  deploymentBucket:
+    name: cache-serverless
+    serverSideEncryption: AES256 # when using server-side encryption
   iamRoleStatements:
     - Effect: Allow
       Action:
@@ -31,8 +36,18 @@ provider:
         - dynamodb:PutItem
         - dynamodb:UpdateItem
         - dynamodb:DeleteItem
+        - "ec2:CreateNetworkInterface"
+        - "ec2:DescribeNetworkInterfaces"
+        - "ec2:DetachNetworkInterface"
+        - "ec2:DeleteNetworkInterface"
       Resource:
         - { "Fn::GetAtt": ["CacheDynamoDBTable", "Arn" ] }
+  vpc:
+    securityGroupIds:
+      - sg-03990ed6d5e88c0b4
+    subnetIds:
+      - subnet-c237a9a5
+
   environment:
     CACHE_TABLE: ${self:custom.tableName}
 
