@@ -7,17 +7,13 @@ plugins:
   - serverless-offline #serverless-offline needs to be last in the list
 
 custom:
-  tableName: 'cache-table-${self:provider.stage}'
   webpack:
     webpackConfig: 'webpack.config.js'
     includeModules:
       forceExclude:
         - aws-sdk
     packager: 'npm'
-  dynamodb:
-    start:
-      migrate: true
-  
+
 
 provider:
   name: aws
@@ -27,29 +23,12 @@ provider:
   deploymentBucket:
     name: cache-serverless
     serverSideEncryption: AES256 # when using server-side encryption
-  iamRoleStatements:
-    - Effect: Allow
-      Action:
-        - dynamodb:Query
-        - dynamodb:Scan
-        - dynamodb:GetItem
-        - dynamodb:PutItem
-        - dynamodb:UpdateItem
-        - dynamodb:DeleteItem
-        - "ec2:CreateNetworkInterface"
-        - "ec2:DescribeNetworkInterfaces"
-        - "ec2:DetachNetworkInterface"
-        - "ec2:DeleteNetworkInterface"
-      Resource:
-        - { "Fn::GetAtt": ["CacheDynamoDBTable", "Arn" ] }
   vpc:
     securityGroupIds:
       - sg-03990ed6d5e88c0b4
     subnetIds:
-      - subnet-c237a9a5
+      - subnet-0f8b8c09d0dec367b
 
-  environment:
-    CACHE_TABLE: ${self:custom.tableName}
 
 functions:
   app:
@@ -57,6 +36,12 @@ functions:
     events:
       - http: ANY /
       - http: 'ANY {proxy+}'
+  version:
+    handler: index.handler
+    events:
+     - http: 
+          path: version
+          method: get
   cacheQuery:
     handler: index.handler
     events:
@@ -65,22 +50,3 @@ functions:
           method: post
           cors: true
 
-  
-
-resources:
-  Resources:
-    CacheDynamoDBTable:
-      Type: 'AWS::DynamoDB::Table'
-      Properties:
-        AttributeDefinitions:
-          -
-            AttributeName: key
-            AttributeType: S
-        KeySchema:
-          -
-            AttributeName: key
-            KeyType: HASH
-        ProvisionedThroughput:
-          ReadCapacityUnits: 1
-          WriteCapacityUnits: 1
-        TableName: ${self:custom.tableName}

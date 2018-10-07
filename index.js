@@ -12,14 +12,13 @@ const GRAPHQL_SERVER = {
   port: 4000
 };
 const REDIS_SERVER = {
-  host: 'cache-server.rb6gsb.ng.0001.apse1.cache.amazonaws.com',
+  host: 'elasticache.rb6gsb.ng.0001.apse1.cache.amazonaws.com',
   port: 6379
 };
 const app = express();
 const redis = new Redis(`//${REDIS_SERVER.host}:${REDIS_SERVER.port}`);
-// redis.connect().then(() => {
-//   console.log('Connect to Elasticache successfully!');
-// });
+
+
 
 function log(obj, depth = 4) {
   console.dir(obj, { depth });
@@ -28,6 +27,24 @@ function log(obj, depth = 4) {
 app.use(bodyParser.json());
 app.use(cors());
 
+
+app.get('/version', async (req, res) => {
+  res.status(200).send('0.3')
+
+  try {
+    await redis.set('hello', 'hello')
+    const test =  await redis.get('hello')
+    console.log('TEST: ', test)
+  } catch(err) {
+    console.log('Test failed: ', err)
+  }
+
+  // axios.get('https://jsonplaceholder.typicode.com/users/1').then(res => {
+  //   console.log('Success', res)
+  // }).catch(err => {
+  //   console.log('Fail', err)
+  // })
+})
 app.get('/', function(req, res) {
   res.send('Hello Codelynx team!!!');
 });
@@ -37,6 +54,7 @@ app.post('/cache-graphql', async (req, res) => {
   console.log(`---GRAPHQL_SERVER:`);
   log(GRAPHQL_SERVER);
   console.dir(`---REDIS_SERVER:`);
+  // console.log(redis)
   log(REDIS_SERVER);
   if (req.method === 'OPTIONS') {
     console.log('CORS option request accepted');
@@ -49,6 +67,7 @@ app.post('/cache-graphql', async (req, res) => {
 
   try {
     //Get Item based on key from redis
+    console.log('Fetch cache record')
     const cacheItem = await redis.get(key);
     console.log('---Cache Item: ');
     log(cacheItem);
@@ -74,17 +93,21 @@ app.post('/cache-graphql', async (req, res) => {
           GRAPHQL_SERVER.port
         }`
       );
-      const response = await axios.post(
-        `${GRAPHQL_SERVER.host}:${GRAPHQL_SERVER.port}`,
-        req.body
-      );
-      console.log('---Response received');
-      const { data } = response;
-      log(data);
-      await redis.set(key, JSON.stringify(data)).then(() => {
-        console.log('---Set Item to Elasticache');
-      });
-      return res.status(200).send(data);
+      try {
+        const response = await axios.post(
+          `${GRAPHQL_SERVER.host}:${GRAPHQL_SERVER.port}`,
+          req.body
+        );
+        console.log('---Response received');
+        const { data } = response;
+        log(data);
+        await redis.set(key, JSON.stringify(data)).then(() => {
+          console.log('---Set Item to Elasticache');
+        });
+        return res.status(200).send(data);
+      } catch(err) {
+        console.log('Forwading request failed: ', err)
+      }
     }
   } catch (error) {
     status = 400;
