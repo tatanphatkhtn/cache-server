@@ -6,17 +6,20 @@ import axios from 'axios';
 import Redis from 'ioredis';
 import cors from 'cors';
 import util from 'util';
-
 const GRAPHQL_SERVER = {
   host: 'http://takearea.me',
   port: 4000
 };
+
+
+
 const REDIS_SERVER = {
   host: 'elasticache.rb6gsb.ng.0001.apse1.cache.amazonaws.com',
-  port: 6379
+  port: 6379,
+  family: 4
 };
 const app = express();
-const redis = new Redis(`//${REDIS_SERVER.host}:${REDIS_SERVER.port}`);
+const redis = new Redis(REDIS_SERVER);
 
 
 
@@ -29,21 +32,23 @@ app.use(cors());
 
 
 app.get('/version', async (req, res) => {
-  res.status(200).send('0.3')
+
 
   try {
     await redis.set('hello', 'hello')
     const test =  await redis.get('hello')
     console.log('TEST: ', test)
+    res.status(200).send('0.8')
+
   } catch(err) {
     console.log('Test failed: ', err)
   }
 
-  // axios.get('https://jsonplaceholder.typicode.com/users/1').then(res => {
-  //   console.log('Success', res)
-  // }).catch(err => {
-  //   console.log('Fail', err)
-  // })
+  axios.get('http://54.169.168.13:9111').then(res => {
+    console.log('Success', res)
+  }).catch(err => {
+    console.log('Fail request', err)
+  })
 })
 app.get('/', function(req, res) {
   res.send('Hello Codelynx team!!!');
