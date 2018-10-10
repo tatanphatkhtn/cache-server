@@ -46,18 +46,19 @@ def main():
     #print(qnaSeries)
     passTest = 0;
     for index, item in enumerate(qnaSeries):
-        query, expectedResult = item["query"], item["expectedResult"];
-        #print(f"index {index}\n query: {query} \n result: {expectedResult}")
-        requestResult = run_query(query)
-        if compareTest(expectedResult, requestResult):
-            passTest += 1
+        if item.get('query') and item.get('query'):
+            query, expectedResult = item["query"], item["expectedResult"];
+            #print(f"index {index}\n query: {query} \n result: {expectedResult}")
+            requestResult = run_query(query)
+            if compareTest(expectedResult, requestResult):
+                passTest += 1
+            else:
+                print(f"The number {index + 1} test is FAILED!")
         else:
-            print(f"The number {index + 1} test is FAILED!")
-            
+            print("Undefined test!")
 
     print(f"{passTest} PASSED!")
     print(f"{len(qnaSeries)-passTest} FAILED!")
-
 
 if (__name__=="__main__"):
     main()

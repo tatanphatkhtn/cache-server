@@ -6,6 +6,9 @@ import axios from 'axios';
 import Redis from 'ioredis';
 import cors from 'cors';
 import util from 'util';
+import * as fs from 'fs';
+
+const JSON_FILE_PATH = "cacheServer.json"
 const GRAPHQL_SERVER = {
   host: 'http://takearea.me',
   port: 4000
@@ -14,7 +17,8 @@ const GRAPHQL_SERVER = {
 
 
 const REDIS_SERVER = {
-  host: 'elasticache.rb6gsb.ng.0001.apse1.cache.amazonaws.com',
+  // host: 'elasticache.rb6gsb.ng.0001.apse1.cache.amazonaws.com',
+  host: 'localhost',
   port: 6379,
   family: 4
 };
@@ -27,6 +31,27 @@ function log(obj, depth = 4) {
   console.dir(obj, { depth });
 }
 
+// TODO: write to file here to test form unitTest.py
+  //fs.write({q:key, a: response.data});
+  // append new data from cache to file
+function writeToFile( reqBody, cacheResponse) {
+  fs.readFile(JSON_FILE_PATH, 'utf8', function readFileCallback(err, data) {
+    if (err) {
+      console.log(err);
+    } else {
+      let obj = JSON.parse(data); //now it an object
+      //console.log("xxx001 cache file: ", obj);
+      //console.log("xxx002 cache: ", reqBody['query'], JSON.parse(cacheResponse));
+      const query = reqBody['query']
+      obj.push({ query , expectedResult:  JSON.parse(cacheResponse)}); //add some data
+      //console.log("xxx003 after write: ", obj);
+
+      const json = JSON.stringify(obj); //convert it back to json
+      fs.writeFile(JSON_FILE_PATH, json, 'utf8', () => console.log("Write file successfull!")); // write it back 
+    }
+  });
+}
+
 app.use(bodyParser.json());
 app.use(cors());
 
@@ -36,21 +61,21 @@ app.get('/version', async (req, res) => {
 
   try {
     await redis.set('hello', 'hello')
-    const test =  await redis.get('hello')
+    const test = await redis.get('hello')
     console.log('TEST: ', test)
     res.status(200).send('0.8')
 
-  } catch(err) {
+  } catch (err) {
     console.log('Test failed: ', err)
   }
-
+  //TODO: change http
   axios.get('http://54.169.168.13:9111').then(res => {
     console.log('Success', res)
   }).catch(err => {
     console.log('Fail request', err)
   })
 })
-app.get('/', function(req, res) {
+app.get('/', function (req, res) {
   res.send('Hello Codelynx team!!!');
 });
 
@@ -84,18 +109,20 @@ app.post('/cache-graphql', async (req, res) => {
         `${GRAPHQL_SERVER.host}:${GRAPHQL_SERVER.port}`,
         req.body
       );
+      writeToFile(req.body, response.data)
       return res.status(response.status).send(response.data);
     }
 
     if (cacheItem) {
       console.log('xxx2002', 'seems like a query');
       console.log('---Cache Item exists');
+      writeToFile(req.body, cacheItem)
       return res.status(200).send(JSON.parse(cacheItem));
     } else {
       console.log('---Cache Item not exists');
       console.log(
         `---Forwarding request to GraphQL Server at ${GRAPHQL_SERVER.host}:${
-          GRAPHQL_SERVER.port
+        GRAPHQL_SERVER.port
         }`
       );
       try {
@@ -109,8 +136,9 @@ app.post('/cache-graphql', async (req, res) => {
         await redis.set(key, JSON.stringify(data)).then(() => {
           console.log('---Set Item to Elasticache');
         });
+        writeToFile(req.body, response)
         return res.status(200).send(data);
-      } catch(err) {
+      } catch (err) {
         console.log('Forwading request failed: ', err)
       }
     }
