@@ -32,22 +32,40 @@ function log(obj, depth = 4) {
 }
 
 // TODO: write to file here to test form unitTest.py
-  //fs.write({q:key, a: response.data});
-  // append new data from cache to file
-function writeToFile( reqBody, cacheResponse) {
-  fs.readFile(JSON_FILE_PATH, 'utf8', function readFileCallback(err, data) {
-    if (err) {
-      console.log(err);
-    } else {
-      let obj = JSON.parse(data); //now it an object
-      //console.log("xxx001 cache file: ", obj);
-      //console.log("xxx002 cache: ", reqBody['query'], JSON.parse(cacheResponse));
-      const query = reqBody['query']
-      obj.push({ query , expectedResult:  JSON.parse(cacheResponse)}); //add some data
-      //console.log("xxx003 after write: ", obj);
+//fs.write({q:key, a: response.data});
+// append new data from cache to file
+function writeToFile(reqBody, cacheResponse) {
+  fs.exists(JSON_FILE_PATH, (exists) => {
+    console.log(exists ? 'File was existed' : 'No file. Create new File!');
+    if (!exists) {
+      const query = reqBody['query'] || reqBody['mutation'] || null
+      const obj = [{ query, expectedResult: JSON.parse(cacheResponse) }]
+      const json = JSON.stringify(obj);
+      console.log("xxx003 after write: ", obj);
+      fs.writeFile(JSON_FILE_PATH, json, 'utf8', (err) => {
+        if (err) throw err;
+        console.log('The file has been saved!')
+      });
+    }
+    else {
+      fs.readFile(JSON_FILE_PATH, 'utf8', function readFileCallback(err, data) {
+        if (err) {
+          console.log(err);
+        } else {
+          let obj = JSON.parse(data); //now it an object
+          //console.log("xxx001 cache file: ", obj);
+          //console.log("xxx002 cache: ", reqBody['query'], JSON.parse(cacheResponse));
+          const query = reqBody['query'] || reqBody['mutation'] || null
+          obj.push({ query, expectedResult: JSON.parse(cacheResponse) }); //add some data
+          //console.log("xxx003 after write: ", obj);
 
-      const json = JSON.stringify(obj); //convert it back to json
-      fs.writeFile(JSON_FILE_PATH, json, 'utf8', () => console.log("Write file successfull!")); // write it back 
+          const json = JSON.stringify(obj); //convert it back to json
+          fs.writeFile(JSON_FILE_PATH, json, 'utf8', (err) => {
+            if (err) throw err;
+            console.log('The file has been saved!')
+          }); // write it back 
+        }
+      });
     }
   });
 }
