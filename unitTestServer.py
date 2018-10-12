@@ -21,7 +21,7 @@
 import json
 import requests
 
-SERVER_URL = "http://takearea.me:4000/"
+SERVER_URL = "https://prod.take247.co.il/graphql"
 JSON_FILE_PATH = "cacheServer.json"
 
 # def run_query(query, variables, headers): # A simple function to use requests.post to make the API call. Note the json= section.
@@ -57,6 +57,7 @@ def displayDiff(expectedResult, requestResult):
 def main():
     qnaSeries = load_json(JSON_FILE_PATH)
     #print(qnaSeries)
+
     passTest = 0;
     for index, item in enumerate(qnaSeries):
         #raise Exception(f"{item}")
